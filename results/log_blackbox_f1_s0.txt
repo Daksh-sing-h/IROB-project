@@ -1,0 +1,15 @@
+blackbox_f1_s0: 200000 samples, 67503 parameters
+  ep   0 train 5.4041e-01 val nMSE 4.6719e-01  (0s)
+  ep   5 train 1.0575e-02 val nMSE 1.4438e-02  (3s)
+  ep  10 train 1.8454e-03 val nMSE 2.6780e-03  (5s)
+  ep  15 train 1.4197e-03 val nMSE 1.9143e-03  (7s)
+  ep  20 train 1.2845e-03 val nMSE 5.4759e-03  (9s)
+  ep  25 train 4.8210e-04 val nMSE 4.9825e-04  (11s)
+  ep  30 train 3.4365e-04 val nMSE 4.0281e-04  (13s)
+  ep  35 train 2.2576e-04 val nMSE 6.7690e-04  (15s)
+  ep  40 train 1.3681e-04 val nMSE 1.3550e-04  (17s)
+  ep  45 train 3.9566e-05 val nMSE 9.6952e-05  (20s)
+  ep  50 train 1.9891e-05 val nMSE 7.8778e-05  (22s)
+  ep  55 train 1.0801e-05 val nMSE 6.7061e-05  (24s)
+  ep  59 train 8.9984e-06 val nMSE 6.5033e-05  (26s)
+best val nMSE 6.4757e-05 | test nMSE 1.1046e-04 | ood nMSE 7.0920e-04

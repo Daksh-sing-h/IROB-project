@@ -1,0 +1,267 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Double cart-pole: live model comparison</title>
+<style>
+  :root {
+    --bg: #f6f7f9; --card: #ffffff; --ink: #1c2330; --muted: #667085; --line: #dde1e8; --grid: #e9ecf1;
+    --truth: #3b4252; --bb: #d95f02; --dl: #1f77b4; --accent: #1f77b4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg: #11151c; --card: #1a2029; --ink: #e8ecf2; --muted: #98a2b3; --line: #2b3441; --grid: #232b36;
+            --truth: #cfd6e4; --bb: #f08a3c; --dl: #5aa9e6; --accent: #5aa9e6; }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--ink); font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 1240px; margin: 0 auto; padding: 16px; }
+  h1 { font-size: 18px; margin: 0 0 2px; }
+  .sub { color: var(--muted); margin: 0 0 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px; }
+  .controls { display: flex; flex-wrap: wrap; gap: 10px 18px; align-items: center; margin-bottom: 12px; }
+  .group { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+  .group > label.t { color: var(--muted); font-size: 12px; margin-right: 2px; }
+  button, select { font: inherit; color: var(--ink); background: var(--card); border: 1px solid var(--line); border-radius: 7px; padding: 5px 10px; cursor: pointer; }
+  button:hover { border-color: var(--accent); }
+  button.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+  button.hold { touch-action: none; user-select: none; }
+  input[type=range] { accent-color: var(--accent); width: 110px; }
+  .val { display: inline-block; min-width: 3.2em; font-variant-numeric: tabular-nums; color: var(--muted); }
+  .panels { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .panel h2 { font-size: 13px; margin: 0 0 6px; display: flex; align-items: center; gap: 6px; }
+  .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .panel .stat { margin-left: auto; color: var(--muted); font-weight: 400; font-variant-numeric: tabular-nums; }
+  canvas { width: 100%; display: block; border-radius: 6px; }
+  .plots { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-top: 12px; }
+  .plots h2 { font-size: 13px; margin: 0 0 6px; }
+  .legend { display: flex; gap: 14px; color: var(--muted); font-size: 12px; margin-top: 6px; flex-wrap: wrap; }
+  .legend span::before { content: ""; display: inline-block; width: 14px; height: 3px; margin-right: 5px; vertical-align: middle; background: var(--c); border-radius: 2px; }
+  .note { color: var(--muted); font-size: 12px; margin-top: 10px; }
+  kbd { border: 1px solid var(--line); border-bottom-width: 2px; border-radius: 4px; padding: 0 5px; font-size: 12px; }
+  #status { margin-left: auto; font-size: 12px; color: var(--muted); }
+  @media (max-width: 860px) { .panels, .plots { grid-template-columns: 1fr; } }
+</style>
+</head>
+<body>
+<main>
+  <h1>Double cart-pole: MuJoCo vs black-box MLP vs DeLaN</h1>
+  <p class="sub">All three start from the same state and receive the same cart force. The models are integrated from their own predictions, so errors accumulate, and the faint outline in the model panels is the MuJoCo pole.</p>
+
+  <div class="card controls">
+    <div class="group"><label class="t">Start</label>
+      <button data-preset="hang" class="on">Hanging</button>
+      <button data-preset="near">Near upright</button>
+      <button data-preset="swing">Swinging</button>
+      <button data-preset="random">Random</button>
+    </div>
+    <div class="group"><label class="t">Cart force</label>
+      <button data-mode="manual" class="on">Manual</button>
+      <button data-mode="sine">Sine</button>
+      <button data-mode="none">None</button>
+    </div>
+    <div class="group">
+      <button class="hold" id="left">&larr; push</button>
+      <button class="hold" id="right">push &rarr;</button>
+      <label class="t">strength</label><input type="range" id="amp" min="0.1" max="1" step="0.05" value="0.6"><span class="val" id="ampv"></span>
+    </div>
+    <div class="group"><label class="t">Speed</label><input type="range" id="speed" min="0.1" max="1" step="0.05" value="1"><span class="val" id="speedv"></span></div>
+    <div class="group"><label><input type="checkbox" id="resync"> re-sync models to MuJoCo every 0.2 s</label></div>
+    <div class="group"><button id="pause">Pause</button><button id="reset">Reset</button></div>
+    <div id="status"></div>
+  </div>
+
+  <div class="panels" style="margin-top:12px">
+    <div class="card panel"><h2><span class="dot" style="background:var(--truth)"></span>MuJoCo (ground truth)<span class="stat" id="s-truth"></span></h2><canvas id="c-truth"></canvas></div>
+    <div class="card panel"><h2><span class="dot" style="background:var(--bb)"></span>Black-box MLP<span class="stat" id="s-bb"></span></h2><canvas id="c-bb"></canvas></div>
+    <div class="card panel"><h2><span class="dot" style="background:var(--dl)"></span>DeLaN (physics-informed)<span class="stat" id="s-dl"></span></h2><canvas id="c-dl"></canvas></div>
+  </div>
+
+  <div class="plots">
+    <div class="card"><h2>State error vs MuJoCo (log scale, last 10 s)</h2><canvas id="p-err"></canvas>
+      <div class="legend"><span style="--c:var(--bb)">Black-box</span><span style="--c:var(--dl)">DeLaN</span></div></div>
+    <div class="card"><h2>Energy error vs MuJoCo (J, last 10 s)</h2><canvas id="p-en"></canvas>
+      <div class="legend"><span style="--c:var(--bb)">Black-box</span><span style="--c:var(--dl)">DeLaN</span></div></div>
+  </div>
+  <p class="note">Keys: <kbd>&larr;</kbd>/<kbd>A</kbd> and <kbd>&rarr;</kbd>/<kbd>D</kbd> push the cart, <kbd>Space</kbd> pauses, <kbd>R</kbd> resets. State error = &radic;(&Delta;x&sup2; + &Delta;&theta;<sub>1</sub>&sup2; + &Delta;&theta;<sub>2</sub>&sup2;). Energy is the true analytical energy evaluated along each model's trajectory. The double pole is chaotic, so all rollouts eventually diverge; compare how long each model stays close. Note that MuJoCo has a &plusmn;1.8 m rail limit which neither model knows about.</p>
+</main>
+
+<script>
+const DT = 0.01, CHUNK = 20, LOOKAHEAD = 40, HIST = 1000, RAIL = 1.8, GEAR = 10;
+const KEYS = ["truth", "bb", "dl"];
+let preset = "hang", mode = "manual", paused = false, resync = false;
+let manualU = 0, version = 0, pending = false, buf = [], tail = null, tailStep = 0, shown = 0, acc = 0, last = performance.now();
+let cur = null, ghost = null, hist = {bb: [], dl: [], ebb: [], edl: []}, trail = {truth: [], bb: [], dl: []}, stalled = false;
+
+const $ = id => document.getElementById(id);
+const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+function startState(p) {
+  const r = (a, b) => a + (b - a) * Math.random();
+  if (p === "near")   return {q: [0, 0.12, -0.08], qd: [0, 0, 0]};
+  if (p === "swing")  return {q: [0, 1.6, 0.4],   qd: [0, 0, 0]};
+  if (p === "random") return {q: [r(-.4, .4), r(-Math.PI, Math.PI), r(-1.2, 1.2)], qd: [r(-1, 1), r(-2, 2), r(-2, 2)]};
+  return {q: [0, Math.PI - 0.08, 0.05], qd: [0, 0, 0]};    // hanging, slightly perturbed
+}
+
+function reset() {
+  version++; pending = false; buf = []; shown = 0; acc = 0; tailStep = 0;
+  const s = startState(preset);
+  tail = {}; KEYS.forEach(k => tail[k] = {q: s.q.slice(), qd: s.qd.slice(), E: 0});
+  cur = JSON.parse(JSON.stringify(tail));
+  hist = {bb: [], dl: [], ebb: [], edl: []}; trail = {truth: [], bb: [], dl: []};
+}
+
+function forceAt(step) {
+  const t = step * DT;
+  if (mode === "sine") return +$("amp").value * Math.sin(2 * Math.PI * 0.9 * t);
+  if (mode === "manual") return manualU;
+  return 0;
+}
+
+async function fetchChunk() {
+  pending = true; const v = version;
+  const u = Array.from({length: CHUNK}, (_, i) => forceAt(tailStep + i));
+  const src = k => (resync ? tail.truth : tail[k]);
+  const body = {u, truth: tail.truth, bb: src("bb"), dl: src("dl")};
+  try {
+    const res = await fetch("/api/step", {method: "POST", body: JSON.stringify(body)});
+    const d = await res.json();
+    if (v !== version) return;                      // stale (reset while in flight)
+    for (let i = 0; i < CHUNK; i++) buf.push({u: u[i], ...Object.fromEntries(KEYS.map(k => [k, {q: d[k].q[i], qd: d[k].qd[i], E: d[k].E[i]}]))});
+    tail = Object.fromEntries(KEYS.map(k => [k, {q: d[k].q[CHUNK - 1], qd: d[k].qd[CHUNK - 1], E: d[k].E[CHUNK - 1]}]));
+    tailStep += CHUNK;
+  } catch (e) { $("status").textContent = "server error: " + e.message; }
+  finally { if (v === version) pending = false; }
+}
+
+function consume(frame) {
+  cur = frame; shown++;
+  const e = k => Math.hypot(...frame[k].q.map((x, i) => x - frame.truth.q[i]));
+  hist.bb.push(e("bb")); hist.dl.push(e("dl"));
+  hist.ebb.push(frame.bb.E - frame.truth.E); hist.edl.push(frame.dl.E - frame.truth.E);
+  for (const h of Object.keys(hist)) if (hist[h].length > HIST) hist[h].shift();
+  KEYS.forEach(k => { const p = tipOf(frame[k]); trail[k].push(p); if (trail[k].length > 60) trail[k].shift(); });
+}
+
+function tipOf(s) {
+  const [x, a, b] = s.q, p1x = x + Math.sin(a), p1y = Math.cos(a);
+  return [p1x + Math.sin(a + b), p1y + Math.cos(a + b)];
+}
+
+// ---- drawing ---------------------------------------------------------------------------------
+function fit(canvas, aspect) {
+  const dpr = window.devicePixelRatio || 1, w = canvas.clientWidth;
+  const h = Math.round(w * aspect);
+  if (canvas.width !== Math.round(w * dpr) || canvas.height !== Math.round(h * dpr)) {
+    canvas.width = Math.round(w * dpr); canvas.height = Math.round(h * dpr); canvas.style.height = h + "px";
+  }
+  const c = canvas.getContext("2d"); c.setTransform(dpr, 0, 0, dpr, 0, 0); return [c, w, h];
+}
+
+function drawSystem(key, color) {
+  const [c, W, H] = fit($("c-" + key), 0.95);
+  c.clearRect(0, 0, W, H);
+  const s = Math.min(W / 4.8, H / 4.6), ox = W / 2, oy = H * 0.5;   // pole reach is 2 m up or down
+  const X = x => ox + x * s, Y = y => oy - y * s;
+  // rail + limits
+  c.strokeStyle = css("--line"); c.lineWidth = 3; c.beginPath(); c.moveTo(X(-RAIL), oy); c.lineTo(X(RAIL), oy); c.stroke();
+  c.fillStyle = css("--muted"); [-RAIL, RAIL].forEach(x => c.fillRect(X(x) - 2, oy - 9, 4, 18));
+  // ground reference grid for height (upright limit at 2 m)
+  c.strokeStyle = css("--grid"); c.lineWidth = 1; c.setLineDash([3, 5]);
+  c.beginPath(); c.moveTo(0, Y(2)); c.lineTo(W, Y(2)); c.moveTo(0, Y(-2)); c.lineTo(W, Y(-2)); c.moveTo(ox, Y(-2.2)); c.lineTo(ox, Y(2.2)); c.stroke(); c.setLineDash([]);
+  const draw = (st, col, alpha, lw, fill) => {
+    const [x, a, b] = st.q, p0 = [x, 0], p1 = [x + Math.sin(a), Math.cos(a)], p2 = [p1[0] + Math.sin(a + b), p1[1] + Math.cos(a + b)];
+    c.globalAlpha = alpha; c.strokeStyle = col; c.fillStyle = col; c.lineWidth = lw; c.lineCap = "round";
+    if (fill) c.fillRect(X(x) - 0.2 * s, oy - 0.1 * s, 0.4 * s, 0.2 * s); else c.strokeRect(X(x) - 0.2 * s, oy - 0.1 * s, 0.4 * s, 0.2 * s);
+    c.beginPath(); c.moveTo(X(p0[0]), Y(0)); c.lineTo(X(p1[0]), Y(p1[1])); c.lineTo(X(p2[0]), Y(p2[1])); c.stroke();
+    if (fill) [p1, p2].forEach(p => { c.beginPath(); c.arc(X(p[0]), Y(p[1]), 4.5, 0, 7); c.fill(); });
+    c.globalAlpha = 1;
+  };
+  // tip trail
+  const tr = trail[key]; c.strokeStyle = color; c.lineWidth = 1.5;
+  for (let i = 1; i < tr.length; i++) { c.globalAlpha = i / tr.length * 0.45; c.beginPath(); c.moveTo(X(tr[i - 1][0]), Y(tr[i - 1][1])); c.lineTo(X(tr[i][0]), Y(tr[i][1])); c.stroke(); }
+  c.globalAlpha = 1;
+  if (key !== "truth") draw(cur.truth, css("--truth"), 0.35, 2, false);   // ghost of ground truth
+  draw(cur[key], color, 1, 4, true);
+  // applied force arrow
+  const u = buf.length ? 0 : 0;
+  const f = lastU; if (Math.abs(f) > 0.02) {
+    const x = cur[key].q[0]; c.strokeStyle = css("--accent"); c.fillStyle = css("--accent"); c.lineWidth = 3;
+    const x0 = X(x), x1 = x0 + f * 70, yy = oy + 0.24 * s;
+    c.beginPath(); c.moveTo(x0, yy); c.lineTo(x1, yy); c.stroke();
+    const d = Math.sign(f); c.beginPath(); c.moveTo(x1 + d * 8, yy); c.lineTo(x1, yy - 5); c.lineTo(x1, yy + 5); c.fill();
+  }
+  const st = cur[key];
+  $("s-" + key).textContent = `x ${st.q[0].toFixed(2)}  θ₁ ${st.q[1].toFixed(2)}  θ₂ ${st.q[2].toFixed(2)}`;
+}
+
+function drawPlot(id, series, opts) {
+  const [c, W, H] = fit($(id), 0.42);
+  c.clearRect(0, 0, W, H);
+  const L = 44, R = 8, T = 8, B = 20, w = W - L - R, h = H - T - B;
+  const tf = opts.log ? v => Math.log10(Math.max(v, 1e-9)) : v => v;
+  let lo = opts.lo, hi = opts.hi;
+  if (!opts.log) { let m = 1e-6; series.forEach(s => s.data.forEach(v => m = Math.max(m, Math.abs(v)))); hi = m * 1.1; lo = -hi; }
+  c.font = "11px system-ui"; c.fillStyle = css("--muted"); c.strokeStyle = css("--grid"); c.lineWidth = 1; c.textAlign = "right";
+  const ticks = opts.log ? [-4, -3, -2, -1, 0, 1, 2].map(e => [10 ** e, "1e" + e]) : [-1, -0.5, 0, 0.5, 1].map(f => [f * hi, (f * hi).toPrecision(2)]);
+  ticks.forEach(([v, lab]) => { const y = T + h - (tf(v) - tf(lo)) / (tf(hi) - tf(lo)) * h; if (y < T - 1 || y > T + h + 1) return;
+    c.beginPath(); c.moveTo(L, y); c.lineTo(L + w, y); c.stroke(); c.fillText(lab, L - 5, y + 4); });
+  c.textAlign = "center"; for (let s = 0; s <= 10; s += 2) { const x = L + (1 - s / 10) * w; c.fillText(s === 0 ? "now" : "-" + s + "s", x, H - 5); }
+  series.forEach(s => {
+    c.strokeStyle = s.color; c.lineWidth = 2; c.beginPath();
+    const n = s.data.length;
+    s.data.forEach((v, i) => { const x = L + (1 - (n - 1 - i) / HIST) * w, y = T + h - (tf(Math.min(Math.max(v, lo), hi)) - tf(lo)) / (tf(hi) - tf(lo)) * h; i ? c.lineTo(x, y) : c.moveTo(x, y); });
+    c.stroke();
+  });
+}
+
+// ---- main loop -------------------------------------------------------------------------------
+let lastU = 0;
+function frame(now) {
+  const dt = Math.min((now - last) / 1000, 0.1); last = now;
+  if (!paused) {
+    acc += dt * +$("speed").value / DT;
+    let n = Math.floor(acc); acc -= n;
+    stalled = false;
+    while (n-- > 0) { if (!buf.length) { stalled = true; acc = 0; break; } const f = buf.shift(); lastU = f.u; consume(f); }
+  }
+  if (!pending && buf.length < LOOKAHEAD) fetchChunk();
+  drawSystem("truth", css("--truth")); drawSystem("bb", css("--bb")); drawSystem("dl", css("--dl"));
+  drawPlot("p-err", [{data: hist.bb, color: css("--bb")}, {data: hist.dl, color: css("--dl")}], {log: true, lo: 1e-4, hi: 100});
+  drawPlot("p-en", [{data: hist.ebb, color: css("--bb")}, {data: hist.edl, color: css("--dl")}], {log: false});
+  $("status").textContent = (paused ? "paused · " : "") + (stalled ? "buffering… · " : "") + "t = " + (shown * DT).toFixed(2) + " s";
+  requestAnimationFrame(frame);
+}
+
+// ---- controls --------------------------------------------------------------------------------
+function bindGroup(attr, set) {
+  document.querySelectorAll(`[data-${attr}]`).forEach(b => b.addEventListener("click", () => {
+    document.querySelectorAll(`[data-${attr}]`).forEach(o => o.classList.toggle("on", o === b)); set(b.dataset[attr]);
+  }));
+}
+bindGroup("preset", v => { preset = v; reset(); });
+bindGroup("mode", v => { mode = v; });
+$("reset").onclick = reset;
+$("pause").onclick = () => { paused = !paused; $("pause").textContent = paused ? "Resume" : "Pause"; };
+$("resync").onchange = e => { resync = e.target.checked; };
+const upd = () => { $("ampv").textContent = (+$("amp").value * GEAR).toFixed(1) + " N"; $("speedv").textContent = (+$("speed").value).toFixed(2) + "×"; };
+$("amp").oninput = upd; $("speed").oninput = upd; upd();
+const push = d => { manualU = d * +$("amp").value; };
+[["left", -1], ["right", 1]].forEach(([id, d]) => {
+  const b = $(id); b.addEventListener("pointerdown", e => { e.preventDefault(); mode !== "manual" && document.querySelector('[data-mode="manual"]').click(); push(d); });
+  ["pointerup", "pointerleave", "pointercancel"].forEach(ev => b.addEventListener(ev, () => { manualU = 0; }));
+});
+const down = {};
+addEventListener("keydown", e => {
+  const k = e.key.toLowerCase();
+  if (k === " ") { e.preventDefault(); $("pause").click(); return; }
+  if (k === "r") { reset(); return; }
+  if (["arrowleft", "a", "arrowright", "d"].includes(k)) { e.preventDefault(); down[k] = true; if (mode !== "manual") document.querySelector('[data-mode="manual"]').click(); push(["arrowleft", "a"].includes(k) ? -1 : 1); }
+});
+addEventListener("keyup", e => { const k = e.key.toLowerCase(); delete down[k]; if (["arrowleft", "a", "arrowright", "d"].includes(k)) { manualU = 0; Object.keys(down).forEach(kk => push(["arrowleft", "a"].includes(kk) ? -1 : 1)); } });
+
+reset(); requestAnimationFrame(frame);
+</script>
+</body>
+</html>

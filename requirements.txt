@@ -1,0 +1,7 @@
+dm_control==1.0.52
+mujoco==4.0.1
+torch==2.15.0
+numpy==2.5.5
+scipy==1.18.1
+sympy==1.14.0
+matplotlib==3.11.2

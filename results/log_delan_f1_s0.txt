@@ -1,0 +1,15 @@
+delan_f1_s0: 200000 samples, 68234 parameters
+  ep   0 train 8.5959e-01 val nMSE 9.9469e-02  (7s)
+  ep   5 train 3.2494e-03 val nMSE 3.6268e-03  (39s)
+  ep  10 train 2.6885e-03 val nMSE 1.7874e-03  (67s)
+  ep  15 train 2.4876e-03 val nMSE 1.7425e-04  (95s)
+  ep  20 train 4.9077e-04 val nMSE 5.4575e-04  (124s)
+  ep  25 train 7.5644e-04 val nMSE 9.5766e-05  (152s)
+  ep  30 train 4.5539e-04 val nMSE 1.3857e-04  (180s)
+  ep  35 train 1.3128e-04 val nMSE 8.6521e-05  (208s)
+  ep  40 train 1.0009e-04 val nMSE 2.5049e-05  (237s)
+  ep  45 train 1.6611e-05 val nMSE 2.3710e-05  (265s)
+  ep  50 train 6.6683e-06 val nMSE 9.1896e-06  (293s)
+  ep  55 train 3.2912e-06 val nMSE 4.1415e-06  (322s)
+  ep  59 train 2.5568e-06 val nMSE 3.5522e-06  (344s)
+best val nMSE 3.5522e-06 | test nMSE 2.7939e-06 | ood nMSE 1.5991e-05
